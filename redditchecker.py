@@ -1,25 +1,27 @@
 import asyncio
 import configparser
 import discord
+import logging
 import requests
 from os.path import dirname, realpath
 
 
-class RedditClient(discord.Client):
+class DiscordClient(discord.Client):
+    async def set_channel(self, channel):
+        await self.wait_until_ready()
+        self.channel = await self.fetch_channel(channel)
+        
     async def on_ready(self):
-        print(f"Logged in as:"
+        print(f"\nLogged in as:"
               f"\n{self.user.name}"
-              f"\n{self.user.id}"
-              f"\n------")
-        channel = self.get_channel(467375306576101399)
-        await channel.send("Bot ready")
+              f"\n{self.user.id}\n")
 
-    async def send_message(self, subreddit, title, url):
-        channel = self.get_channel(467375306576101399)
-        await channel.send(f"New Post in r/{subreddit}:\n"
-                           f"{title}"
+    async def send_notification(self, subreddit, title, url):
+        await self.channel.send(f"New Post in r/{subreddit}:\n"
+                           f"{title}\n"
                            f"{url}")
 
+        
 async def auth_reddit(config, agent):
     """Authenticates to reddit via OAuth2"""
 
@@ -32,50 +34,60 @@ async def auth_reddit(config, agent):
                       headers={"user-agent": agent},
                       auth=auth)
     d = r.json()
-    return d["access_token"]
+    token = d["access_token"]
+    print(f"\nAuthenticated with token: {token}\n")
+    return token
 
-async def check_reddit(access_token, agent, subreddit, refresh, disc_client):
-    """Checks the defined subreddit for the most recent post and sends a
-    discord message if it is new."""
+async def check_reddit(access_token, agent, subreddit):
+    """Checks the defined subreddit for the most recent post and returns a
+    tuple containing the post title and permalink."""
 
     token = "bearer " + access_token
     url = "https://oauth.reddit.com/r/" + subreddit + "/new"
     headers = {"Authorization": token, "User-Agent": agent}
-    payload = {"limit": "1", "sort": "new"} # only get the most recent post
+    payload = {"limit": "10", "sort": "new"} # only get the most recent post
 
-    recent_post = ""
-    while True:
-        response = requests.get(url, params=payload, headers=headers)
-        
-        if response.status_code == 200:
-            data = response.json()
-            post = data["data"]["children"][0]["data"]
-            title = post["title"]
-            url = post["permalink"]
-            print(title, permalink)
-            if recent_post is not title:
-                await client.send_message(subreddit, title, url)
-                recent_post = title
-            await asyncio.sleep(5)
-        else:
-            break
+    response = requests.get(url, params=payload, headers=headers)
+    if response.status_code == 200:
+        data = response.json()
+        post = data["data"]["children"][0]["data"]
+        title = post["title"]
+        permalink = post["permalink"]
+        print(title, permalink)
+        return (title, permalink)
+    else:
+        return None
             
-    
 async def main():
+    logging.basicConfig(level=logging.DEBUG)
     config = configparser.ConfigParser()
     config.read(dirname(realpath(__file__)) + "/config.ini")
     useragent = config["reddit"]["user_agent"]
     subreddit = config["reddit"]["subreddit"]
+    channel = config["discord"]["channel_id"]
     delay = config["defaults"]["update_interval"]
 
     reddit_token = await auth_reddit(config, useragent)
-    discord_token = config["defaults"]["token"]
-    client = RedditClient()
-    client.run(discord_token)
-    loop = asyncio.get_event_loop()
-    task = loop.create_task(check_reddit(reddit_token, useragent, subreddit, delay, client))
-    await loop.run_until_complete(main())
-    
+    discord_token = config["discord"]["token"]
+
+    client = DiscordClient()
+    start_discord = asyncio.ensure_future(client.start(discord_token))
+    await client.set_channel(channel)
+
+    last_post = ("", "")
+    recent_post = ("", "")
+    while recent_post != None:
+        recent_post = await check_reddit(reddit_token, useragent, subreddit)
+        if last_post == recent_post:
+            pass
+        elif last_post != recent_post:
+            await client.send_notification(subreddit, *recent_post)
+            last_post = recent_post
+        else:
+            break
+        await asyncio.sleep(int(delay))
+    await client.close()
     
 if __name__ == "__main__":
-    asyncio.run(main())
+    loop = asyncio.get_event_loop()
+    loop.run_until_complete(main())
