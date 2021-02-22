@@ -17,9 +17,12 @@ class DiscordClient(discord.Client):
               f"\n{self.user.id}\n")
 
     async def send_notification(self, subreddit, title, url):
-        await self.channel.send(f"New Post in r/{subreddit}:\n"
-                           f"{title}\n"
-                           f"{url}")
+        url = "https://reddit.com" + url
+        thumbnail_url = "https://external-preview.redd.it/iDdntscPf-nfWKqzHRGFmhVxZm4hZgaKe5oyFws-yzA.png"
+        thumbnail_url2 = "https://assets.stickpng.com/images/580b57fcd9996e24bc43c531.png"
+        msg = discord.Embed(title=title, url=url, color=0x8a28ad)
+        msg.set_thumbnail(url=thumbnail_url2)
+        await self.channel.send(embed=msg)
 
         
 async def auth_reddit(config, agent):
