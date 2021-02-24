@@ -5,5 +5,3 @@ include/
 lib/
 pyvenv.cfg
 *~
-
-config.ini
