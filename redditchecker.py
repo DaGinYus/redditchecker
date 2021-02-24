@@ -8,10 +8,13 @@ from os.path import dirname, realpath
 
 class DiscordClient(discord.Client):
     async def set_channel(self, channel):
+        # get the channel to send messages in at the start
+        # THIS IS HARDCODED RIGHT NOW, MIGHT CHANGE TO BE DYNAMIC
         await self.wait_until_ready()
         self.channel = await self.fetch_channel(channel)
-        
+
     async def on_ready(self):
+        # send a ready message
         print(f"\nLogged in as:"
               f"\n{self.user.name}"
               f"\n{self.user.id}\n")
@@ -21,15 +24,17 @@ class DiscordClient(discord.Client):
         if len(title) > 256:
             title = title[0:253] + "..."
         url = "https://reddit.com" + url
-        thumbnail_url = "https://external-preview.redd.it/iDdntscPf-nfWKqzHRGFmhVxZm4hZgaKe5oyFws-yzA.png" 
-        thumbnail_url2 = "https://assets.stickpng.com/images/580b57fcd9996e24bc43c531.png"
+        thumbnail_url = ("https://external-preview.redd.it/"
+                         "iDdntscPf-nfWKqzHRGFmhVxZm4hZgaKe5oyFws-yzA.png")
+        thumbnail_url2 = ("https://assets.stickpng.com/"
+                          "images/580b57fcd9996e24bc43c531.png")
         msg = discord.Embed(title=title, url=url, color=0x8a28ad)
         msg.set_thumbnail(url=thumbnail_url2)
         await self.channel.send(embed=msg)
 
         
 async def auth_reddit(config, agent):
-    """Authenticates to reddit via OAuth2"""
+    """Authenticates to reddit via OAuth2 and returns a token"""
 
     rc = config["reddit"]
     authurl = "https://www.reddit.com/api/v1/access_token"
@@ -110,7 +115,7 @@ async def main():
                 await client.send_notification(subreddit, *recent_posts[-1])
         except Exception as err:
             print(err)
-            break
+            break # exit loop and close the bot
         await asyncio.sleep(int(delay))
     
     await client.close()
