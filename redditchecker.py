@@ -17,8 +17,11 @@ class DiscordClient(discord.Client):
               f"\n{self.user.id}\n")
 
     async def send_notification(self, subreddit, title, url):
+        # truncate to length limit on embed title
+        if len(title) > 256:
+            title = title[0:253] + "..."
         url = "https://reddit.com" + url
-        thumbnail_url = "https://external-preview.redd.it/iDdntscPf-nfWKqzHRGFmhVxZm4hZgaKe5oyFws-yzA.png"
+        thumbnail_url = "https://external-preview.redd.it/iDdntscPf-nfWKqzHRGFmhVxZm4hZgaKe5oyFws-yzA.png" 
         thumbnail_url2 = "https://assets.stickpng.com/images/580b57fcd9996e24bc43c531.png"
         msg = discord.Embed(title=title, url=url, color=0x8a28ad)
         msg.set_thumbnail(url=thumbnail_url2)
@@ -38,10 +41,11 @@ async def auth_reddit(config, agent):
                       auth=auth)
     d = r.json()
     token = d["access_token"]
+    expire_time = d["expires_in"]
     print(f"\nAuthenticated with token: {token}\n")
     return token
 
-async def check_reddit(access_token, agent, subreddit):
+async def check_reddit(access_token, config, agent, subreddit):
     """Checks the defined subreddit for the most recent post and returns a
     tuple containing the post title and permalink."""
 
@@ -58,10 +62,16 @@ async def check_reddit(access_token, agent, subreddit):
         permalink = post["permalink"]
         print(title, permalink)
         return (title, permalink)
+    elif response.status_code == 401:
+        # most likely the token expired, try to reauthenticate
+        refresh_token = await auth_reddit(config, agent)
+        await check_reddit(refresh_token, config, agent, subreddit)
     else:
-        return None
+        # something bad happened
+        raise Exception("invalid response")
             
 async def main():
+    # setting config variables
     logging.basicConfig(level=logging.DEBUG)
     config = configparser.ConfigParser()
     config.read(dirname(realpath(__file__)) + "/config.ini")
@@ -70,25 +80,39 @@ async def main():
     channel = config["discord"]["channel_id"]
     delay = config["defaults"]["update_interval"]
 
+    # get tokens for authentication
     reddit_token = await auth_reddit(config, useragent)
     discord_token = config["discord"]["token"]
 
+    # start the discord bot and wait for it to prepare
     client = DiscordClient()
     start_discord = asyncio.ensure_future(client.start(discord_token))
     await client.set_channel(channel)
 
-    last_post = ("", "")
-    recent_post = ("", "")
-    while recent_post != None:
-        recent_post = await check_reddit(reddit_token, useragent, subreddit)
-        if last_post == recent_post:
-            pass
-        elif last_post != recent_post:
-            await client.send_notification(subreddit, *recent_post)
-            last_post = recent_post
-        else:
+    # check for new posts every 'delay' seconds
+    # and send a discord message if there is a new post
+    recent_posts = []
+    new_post = ("", "")
+    while True:
+        try:
+            new_post = await check_reddit(reddit_token,
+                                             config, useragent, subreddit)
+            if new_post in recent_posts:
+                pass
+            elif (new_post not in recent_posts):
+                # store the last 10 posts to guarantee no duplicates
+                if len(recent_posts) < 10:
+                    recent_posts.append(new_post)
+                elif len(recent_posts) == 10:
+                    recent_posts.pop(0)
+                    recent_posts.append(new_post)
+                    
+                await client.send_notification(subreddit, *recent_posts[-1])
+        except Exception as err:
+            print(err)
             break
         await asyncio.sleep(int(delay))
+    
     await client.close()
     
 if __name__ == "__main__":
