@@ -1,9 +1,11 @@
 import asyncio
 import configparser
-import discord
 import logging
-import requests
 from os.path import dirname, realpath
+
+import discord
+import requests
+
 
 
 class DiscordClient(discord.Client):
@@ -46,7 +48,6 @@ async def auth_reddit(config, agent):
                       auth=auth)
     d = r.json()
     token = d["access_token"]
-    expire_time = d["expires_in"]
     print(f"\nAuthenticated with token: {token}\n")
     return token
 
@@ -111,6 +112,10 @@ async def main():
                 elif len(recent_posts) == 10:
                     recent_posts.pop(0)
                     recent_posts.append(new_post)
+                elif new_post == None:
+                    print("RETURNED NONE")
+                    print(new_post)
+                    break
                     
                 await client.send_notification(subreddit, *recent_posts[-1])
         except Exception as err:
