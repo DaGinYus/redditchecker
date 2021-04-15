@@ -1,4 +1,8 @@
 # redditchecker
-This bot checks a subreddit for new posts. It was an exercise in learning how to work with asynchronous loops and OAuth2 authentication with Reddit's API. I intentionally did not use the PRAW python module because I was only scraping for one thing, and because I wanted to learn how to get the data on my own. 
+A bot to check reddit for posts and notify the user via discord message. It simply queries the reddit API at set intervals and sends a message if there is a new post. Modules will make it expandable in the future. 
 
-Use by creating Reddit and Discord bots/applications and get the authentication details, which will be placed in the config.ini file. Required Discord permissions are: see channels, send messages, embed links. 
+## Why not just use PRAW?
+I wanted to learn how to do web requests and asynchronous I/O on my own, so I decided to try implementing my own solution. Also, I am only scraping for one specific thing so the implementation is a lot simpler
+
+## Usage
+Create developer accounts in Discord and Reddit, and fill in the corresponding token and client id fields. Authenticate to reddit using username and password for the developer account.
