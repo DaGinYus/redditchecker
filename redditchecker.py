@@ -70,7 +70,11 @@ async def check_reddit(access_token, config, agent, subreddit):
         return (title, permalink)
     elif response.status_code == 401:
         # most likely the token expired, try to reauthenticate
-        refresh_token = await auth_reddit(config, agent)
+        try:
+            refresh_token = await asyncio.wait_for(auth_reddit(config, agent), 5)
+        except asyncio.TimeoutError: # try again
+            asyncio.sleep(5)
+            refresh_token = await asyncio.wait_for(auth_reddit(config, agent), 5)
         await check_reddit(refresh_token, config, agent, subreddit)
     else:
         # something bad happened
@@ -112,7 +116,7 @@ async def main():
                 elif len(recent_posts) == 10:
                     recent_posts.pop(0)
                     recent_posts.append(new_post)
-                elif new_post == None:
+                elif new_post is None:
                     print("RETURNED NONE")
                     print(new_post)
                     break
