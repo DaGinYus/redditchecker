@@ -150,10 +150,14 @@ class DiscordClient(discord.Client):
                 
 def main():
     """Reads config and starts the bot."""
+    logger = logging.
     logging.basicConfig(
-        format="%(asctime)s %(levelname)-8s %(message)s",
         level=logging.INFO,
-        datefmt="%Y-%m-%d %H:%M:%S")
+        format="%(asctime)s %(levelname)-8s %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+        handlers=[logging.FileHandler("debug.log"),
+                  logging.StreamHandler()]
+    )
     
     config = read_from_config()
     check_config(config)
