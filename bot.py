@@ -2,6 +2,7 @@
 import asyncio
 import configparser
 import logging
+import shutil
 from os.path import dirname, realpath
 
 import discord
@@ -11,7 +12,23 @@ def read_from_config(filename="config.ini"):
     """Reads configuration file and returns ConfigParser object which contains
     the settings."""
     config = configparser.ConfigParser()
-    config.read(dirname(realpath(__file__)) + '/' + filename)
+    currentdir = dirname(realpath(__file__)) + '/'
+    filepath = currentdir + filename
+    try:
+        config_file = open(filepath)
+        config.read_file(config_file)
+    except OSError:
+        # if config doesn't exist, ask to copy SAMPLE_CONFIG.ini
+        usrinput = input(f"{path} does not exist. "
+                         f"Copy config from SAMPLE_CONFIG? (y/n): ")
+        if usrinput.lower() == 'y':
+            shutil.copy(currentdir + "SAMPLE_CONFIG.ini", currentdir + "config.ini")
+            read_from_config()
+        print("Config file not found. EXITING")
+        raise
+    finally:
+        config_file.close()
+        
     return config
 
 def check_config(config, filename="config.ini"):
