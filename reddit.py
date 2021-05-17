@@ -24,7 +24,6 @@ def sub_parse_to_dict(data):
     for post in posts:
         post_data = post["data"]
         posts_dict[post_data["title"]] = post_data["permalink"]
-
     return posts_dict
 
 class RedditSession:
@@ -46,7 +45,7 @@ class RedditSession:
         """Authenticates with Reddit using client credentials. See 
         'Application Only OAuth' under 
         https://github.com/reddit-archive/reddit/wiki/oauth2.
-        This function returns the access token."""
+        This function sets the access token and returns True on success"""
         
         url = self.base_url + "access_token"
         device_id = random_string()
@@ -56,8 +55,13 @@ class RedditSession:
         async with self.client_session.post(url, data=payload,
                                             auth=self.client_auth) as response:
             check_response(response)
-            self.access_token = response.json()["access_token"]
-            self.expires_in = int(response.json()["expires_in"])
+            response_data = await response.json()
+            self.access_token = response_data["access_token"]
+            self.expires_in = int(response_data["expires_in"])
+            
+        print(f"Authenticated to Reddit with token "
+              f"{self.access_token}")
+        return True
 
     async def revoke_token(self, token, token_type="access_token"):
         """Tells reddit to revoke the token."""
@@ -77,11 +81,11 @@ class RedditSession:
         token = "bearer " + self.access_token
         url = "https://oauth.reddit.com/r/" + subreddit + "/new"
         payload = {"limit" : num_posts, "sort" : "new"}
-        headers = {"Authorization" : token, "User-Agent" : auth.user_agent}
+        headers = {"Authorization" : token, "User-Agent" : self.user_agent}
 
         async with self.client_session.get(url, data=payload,
                                            headers=headers) as response:
             check_response(response)
-            sub_data = response.json()
+            sub_data = await response.json()
 
         return sub_parse_to_dict(sub_data)
