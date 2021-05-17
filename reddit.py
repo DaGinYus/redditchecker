@@ -1,3 +1,4 @@
+import logging
 import random
 import string
 import aiohttp
@@ -15,7 +16,7 @@ def random_string(length=20):
     return "".join(random.choice(charset) for _ in range(length))
 
 def sub_parse_to_dict(data):
-    """Parses JSON data into a dictionary {title : permalink}."""
+    """Parses JSON data into a dictionary {title : permalink}."""    
     # follows the JSON format returned by reddit
     # list of posts containing info
     posts = data["data"]["children"]
@@ -29,6 +30,7 @@ def sub_parse_to_dict(data):
 class RedditSession:
     def __init__(self, client_id, client_secret, user_agent):
         """Initialized with client details and user agent."""
+        
         self.user_agent = user_agent
         self.base_url = "https://www.reddit.com/api/v1/"
         
@@ -51,41 +53,53 @@ class RedditSession:
         device_id = random_string()
         payload = {"grant_type" : "client_credentials",
                    "device_id" : device_id}
-        
-        async with self.client_session.post(url, data=payload,
-                                            auth=self.client_auth) as response:
-            check_response(response)
-            response_data = await response.json()
-            self.access_token = response_data["access_token"]
-            self.expires_in = int(response_data["expires_in"])
-            
-        print(f"Authenticated to Reddit with token "
-              f"{self.access_token}")
-        return True
+        try:
+            async with self.client_session.post(url, data=payload,
+                    auth=self.client_auth) as response:
+                check_response(response)
+                response_data = await response.json()
+                self.access_token = response_data["access_token"]
+                self.expires_in = int(response_data["expires_in"])
+                
+                logging.info(f"Authenticated to Reddit "
+                             f"(token: {self.access_token})")
+                return True
+        except aiohttp.ClientResponseError as err:
+            logging.error(f"Request failed with error code {err.status}")
+            return False
 
-    async def revoke_token(self, token, token_type="access_token"):
+    async def revoke_token(self, token="", token_type="access_token"):
         """Tells reddit to revoke the token."""
+        # default is to revoke the instance token
+        if token == "":
+            token = self.access_token
         
         url = self.base_url + "revoke_token"
         payload = {"token" : token,
                    "token_type_hint" : token_type}
-
-        async with self.client_session.post(url, data=payload,
-                                            auth=self.client_auth) as response:
-            check_response(response)
+        try:
+            async with self.client_session.post(url, data=payload,
+                    auth=self.client_auth) as response:
+                check_response(response)
+                logging.info(f"Reddit access token revoked (token: {self.access_token})")
+        except aiohttp.ClientResponseError as err:
+            logging.error(f"Request failed with error code {err.status}")
 
     async def sub_get_new(self, subreddit, num_posts=10):
         """Retrieves the most recent posts from a subreddit and returns the data
         in dictionary format"""
+        
         num_posts = str(num_posts)
         token = "bearer " + self.access_token
         url = "https://oauth.reddit.com/r/" + subreddit + "/new"
         payload = {"limit" : num_posts, "sort" : "new"}
         headers = {"Authorization" : token, "User-Agent" : self.user_agent}
+        try:
+            async with self.client_session.get(url, data=payload,
+                    headers=headers) as response:
+                check_response(response)
+                sub_data = await response.json()
 
-        async with self.client_session.get(url, data=payload,
-                                           headers=headers) as response:
-            check_response(response)
-            sub_data = await response.json()
-
-        return sub_parse_to_dict(sub_data)
+                return sub_parse_to_dict(sub_data)
+        except aiohttp.ClientResponseError as err:
+            logging.error(f"Request failed with error code {err.status}")

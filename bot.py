@@ -15,8 +15,8 @@ def read_from_config(filename="config.ini"):
     currentdir = dirname(realpath(__file__)) + '/'
     filepath = currentdir + filename
     try:
-        config_file = open(filepath)
-        config.read_file(config_file)
+        with open(filepath) as config_file:
+            config.read_file(config_file)
     except OSError:
         # if config doesn't exist, ask to copy SAMPLE_CONFIG.ini
         usrinput = input(f"{path} does not exist. "
@@ -24,10 +24,8 @@ def read_from_config(filename="config.ini"):
         if usrinput.lower() == 'y':
             shutil.copy(currentdir + "SAMPLE_CONFIG.ini", currentdir + "config.ini")
             read_from_config()
-        print("Config file not found. EXITING")
+        logging.error("Config file not found. EXITING")
         raise
-    finally:
-        config_file.close()
         
     return config
 
@@ -40,7 +38,7 @@ def check_config(config, filename="config.ini"):
                 config[section][key] = set_config(section, key)
                 with open(dirname(realpath(__file__)) + '/' + filename, 'w') as configfile:
                     config.write(configfile)
-                print(f"Wrote {dirname(realpath(__file__)) + '/' + filename} successfully")
+                logging.info("Wrote {dirname(realpath(__file__)) + '/' + filename}")
                 
 def set_config(section, key):
     """Asks the user to input a value."""
@@ -64,7 +62,7 @@ def compare_dictionaries(new_dict, old_dict):
     for key, val in new_dict.items():
         if key not in old_dict:
             output_dict.update({key : val})
-    return output_dict    
+    return output_dict
 
 
 class DiscordClient(discord.Client):
@@ -88,12 +86,19 @@ class DiscordClient(discord.Client):
         self.auth_loop = self.loop.create_task(self.reddit_auth_loop())
         self.check_loop = self.loop.create_task(self.reddit_check_loop())
 
+    async def close(self, *args, **kwargs):
+        """Extend client.close() to perform additional cleanup duties."""
+        await self.reddit_session.revoke_token()
+        await self.reddit_session.client_session.close()
+        await super().close(*args, **kwargs)
+    
     async def on_ready(self):
-        print(f"Logged in as {self.user} (ID: {self.user.id})")
-        print("------")
+        """Status message when bot is ready."""
+        logging.info(f"Logged in as {self.user} (ID: {self.user.id})")
 
     async def reddit_auth_loop(self):
         """Authenticate every hour."""
+        
         await self.wait_until_ready()
         buffer_time = 100 # seconds
         
@@ -107,9 +112,10 @@ class DiscordClient(discord.Client):
     async def reddit_check_loop(self):
         """Check for posts every 5 seconds and sends a message if there is a 
         new post."""
+        
         while not self.is_closed():
             await self.reddit_authenticated.wait()
-            print(f"Checking for new posts in r/{self.subreddit}")
+            logging.debug(f"Checking for new posts in r/{self.subreddit}")
             check_interval = 5 # seconds
             temp_posts = await self.reddit_session.sub_get_new(self.subreddit)
             await asyncio.sleep(check_interval)
@@ -121,12 +127,13 @@ class DiscordClient(discord.Client):
     async def discord_notify(self, new_posts):
         """Takes a dictionary of new posts, formats them and sends notifications
         in Discord."""
+        
         for title, url in new_posts.items():
             # truncate to Discord's length limit for an embed title
             if len(title) > 256:
                 title = title[:253] + "..."
             url = "https://reddit.com" + url
-            print(f"New post found: {title} at {url}")
+            logging.info(f"New post found: '{title}'")
             
             # just some stuff to make it look fancy
             thumbnail_url = ("https://assets.stickpng.com/"
@@ -138,11 +145,15 @@ class DiscordClient(discord.Client):
 
             channel = self.get_channel(self.channel_id)
             await channel.send(embed=msg)
+            logging.debug(f"Notification for '{title}' sent")
             await asyncio.sleep(1) # ensure the bot does not spam
                 
 def main():
     """Reads config and starts the bot."""
-    logging.basicConfig(level=logging.DEBUG)
+    logging.basicConfig(
+        format="%(asctime)s %(levelname)-8s %(message)s",
+        level=logging.INFO,
+        datefmt="%Y-%m-%d %H:%M:%S")
     
     config = read_from_config()
     check_config(config)
