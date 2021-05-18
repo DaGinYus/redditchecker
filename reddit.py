@@ -17,7 +17,7 @@ def random_string(length=20):
 
 def sub_parse_to_list(data):
     """Parses relevant JSON data and returns a list of 
-    RedditPost objects.
+    posts which are represented by dictionaries.
     """
     # follows the JSON format returned by reddit
     # list of posts containing info
@@ -36,43 +36,9 @@ def sub_parse_to_list(data):
     for post in posts:
         temp_dict = {}
         for var_name, json_loc in post_template.items():
-            eval(f"temp_dict[{var_name}] = post['data'][{json_loc}]")
+            temp_dict[var_name] = post['data'][json_loc]
         posts_list.append(temp_dict)
     return posts_list
-
-
-class RedditPost:
-    """A class for organizing data pertaining to a Reddit post."""
-    def __init__(self, title,
-                 post_id,
-                 create_time,
-                 author,
-                 content,
-                 flair,
-                 author_flair):
-        """title is a string containing the post title
-           post_id is a string containing the post id
-           create_time is an integer containing the UTC time (seconds) that
-                       the post was created at
-           author_details is a dictionary {"name" : username, 
-                                           "flair" : author flair}
-           content is a string containing the content of the post
-           flair is a string containing the flairtext"""
-        
-        self.title = title
-        self.post_id = post_id
-        self.create_time = create_time
-        self.author = {"name" : author, "flair" : author_flair}
-        self.content = content
-        self.flair = flair
-        self.imgur = self.get_imgur_from_content(self)
-
-    def get_imgur_from_content(self):
-        """Looks for an imgur link in the post content and stores it for
-        use as a thumbnail."""
-        for word in self.content.split(' ')
-            return 
-
 
 class RedditSession:
     """A class to keep track of shared instance variables required for

@@ -3,6 +3,7 @@ import asyncio
 import configparser
 import logging
 import shutil
+import time
 from os.path import dirname, realpath
 
 import discord
@@ -54,15 +55,32 @@ def start_reddit_session_from_config(config):
     user_agent = redditconf["user_agent"]
     return reddit.RedditSession(client_id, client_secret, user_agent)
 
-def compare_dictionaries(new_dict, old_dict):
-    """Compares an updated dictionary with the old one to check for differences.
-    Returns a dictionary containing values that are in the new dictionary
-    but not the old one."""
-    output_dict = {}
-    for key, val in new_dict.items():
-        if key not in old_dict:
-            output_dict.update({key : val})
-    return output_dict
+def format_post(post):
+    """Formats the Reddit post data into strings."""
+    title = post["title"]
+    author = post["author"]
+    url = f"https://redd.it/{post['post_id']}"
+    content = post["content"]
+    
+    # prepend the post flair if it exists
+    if post["flair"]:
+        title = f"({post['flair']}){title}"
+    # append author flair if it exists
+    if post["author_flair"]:
+        author = f"{author}({post['author_flair']})"
+
+    # truncate the post content to 2000 characters
+    if len(post["content"]) > 2000:
+        content = post["content"][:1997] + "..."
+
+    return title, url, author, content
+
+def compare_lists(old_list, new_list):
+    output_list = []
+    for item in new_list:
+        if item not in old_list:
+            output_list.append(item)
+    return output_list
 
 
 class DiscordClient(discord.Client):
@@ -110,48 +128,36 @@ class DiscordClient(discord.Client):
             self.reddit_authenticated.clear()
         
     async def reddit_check_loop(self):
-        """Check for posts every 5 seconds and sends a message if there is a 
-        new post."""
+        """Check for posts every 5 seconds and sends a message if a post from
+        r/subreddit/new has been posted within the last check interval."""
         
         while not self.is_closed():
             await self.reddit_authenticated.wait()
             logging.debug(f"Checking for new posts in r/{self.subreddit}")
             check_interval = 5 # seconds
-            temp_posts = await self.reddit_session.sub_get_new(self.subreddit)
+            posts = await self.reddit_session.sub_get_new(self.subreddit)
             await asyncio.sleep(check_interval)
             updated_posts = await self.reddit_session.sub_get_new(self.subreddit)
-            new_posts = compare_dictionaries(updated_posts, temp_posts)
+            new_posts = compare_lists(posts, updated_posts)
             if new_posts:
-                await self.discord_notify(new_posts)
+                for post in new_posts:
+                    logging.info(f"New post found: {post['title']}")
+                    await self.discord_notify(post)
 
-    async def discord_notify(self, new_posts):
-        """Takes a dictionary of new posts, formats them and sends notifications
-        in Discord."""
+    async def discord_notify(self, post):
+        """Takes a post containing data in dictionary form, formats it, and
+        sends notifications in Discord."""
+        title, url, author, content = format_post(post)
         
-        for title, url in new_posts.items():
-            # truncate to Discord's length limit for an embed title
-            if len(title) > 256:
-                title = title[:253] + "..."
-            url = "https://reddit.com" + url
-            logging.info(f"New post found: '{title}'")
-            
-            # just some stuff to make it look fancy
-            thumbnail_url = ("https://assets.stickpng.com/"
-                             "images/580b57fcd9996e24bc43c531.png")
-            color = 0x8a28ad
-            
-            msg = discord.Embed(title=title, url=url, color=color)
-            msg.set_thumbnail(url=thumbnail_url)
-
-            channel = self.get_channel(self.channel_id)
-            await channel.send(embed=msg)
-            logging.debug(f"Notification for '{title}' sent")
-            await asyncio.sleep(1) # ensure the bot does not spam
+        channel = self.get_channel(self.channel_id)
+        await channel.send(f"{title}\n{url} by {author}")
+        logging.debug(f"Notification for '{title}' sent")
+        await asyncio.sleep(0.5) # ensure the bot does not spam
                 
 def main():
     """Reads config and starts the bot."""
     logging.basicConfig(
-        level=logging.INFO,
+        level=logging.DEBUG,
         format="%(asctime)s %(levelname)-8s %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S",
         handlers=[logging.FileHandler("debug.log", 'w'),
