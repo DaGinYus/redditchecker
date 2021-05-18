@@ -15,19 +15,68 @@ def random_string(length=20):
     charset = string.ascii_letters + string.digits
     return "".join(random.choice(charset) for _ in range(length))
 
-def sub_parse_to_dict(data):
-    """Parses JSON data into a dictionary {title : permalink}."""    
+def sub_parse_to_list(data):
+    """Parses relevant JSON data and returns a list of 
+    RedditPost objects.
+    """
     # follows the JSON format returned by reddit
     # list of posts containing info
     posts = data["data"]["children"]
-    posts_dict = {}
+    posts_list = []
+    # the locations of post data values within the JSON
+    post_template = {"title" : "title",
+                     "post_id" : "id",
+                     "create_time" : "created_utc",
+                     "author" : "author",
+                     "content" : "selftext",
+                     "flair" : "link_flair_text",
+                     "author_flair" : "author_flair_text"}
+    
     # parse the posts and put in dictionary
     for post in posts:
-        post_data = post["data"]
-        posts_dict[post_data["title"]] = post_data["permalink"]
-    return posts_dict
+        temp_dict = {}
+        for var_name, json_loc in post_template.items():
+            eval(f"temp_dict[{var_name}] = post['data'][{json_loc}]")
+        posts_list.append(temp_dict)
+    return posts_list
+
+
+class RedditPost:
+    """A class for organizing data pertaining to a Reddit post."""
+    def __init__(self, title,
+                 post_id,
+                 create_time,
+                 author,
+                 content,
+                 flair,
+                 author_flair):
+        """title is a string containing the post title
+           post_id is a string containing the post id
+           create_time is an integer containing the UTC time (seconds) that
+                       the post was created at
+           author_details is a dictionary {"name" : username, 
+                                           "flair" : author flair}
+           content is a string containing the content of the post
+           flair is a string containing the flairtext"""
+        
+        self.title = title
+        self.post_id = post_id
+        self.create_time = create_time
+        self.author = {"name" : author, "flair" : author_flair}
+        self.content = content
+        self.flair = flair
+        self.imgur = self.get_imgur_from_content(self)
+
+    def get_imgur_from_content(self):
+        """Looks for an imgur link in the post content and stores it for
+        use as a thumbnail."""
+        for word in self.content.split(' ')
+            return 
+
 
 class RedditSession:
+    """A class to keep track of shared instance variables required for
+    Reddit authentication."""
     def __init__(self, client_id, client_secret, user_agent):
         """Initialized with client details and user agent."""
         
@@ -100,6 +149,6 @@ class RedditSession:
                 check_response(response)
                 sub_data = await response.json()
 
-                return sub_parse_to_dict(sub_data)
+                return sub_parse_to_list(sub_data)
         except aiohttp.ClientResponseError as err:
             logging.error(f"Request failed with error code {err.status}")
