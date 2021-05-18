@@ -30,7 +30,8 @@ def sub_parse_to_list(data):
                      "author" : "author",
                      "content" : "selftext",
                      "flair" : "link_flair_text",
-                     "author_flair" : "author_flair_text"}
+                     "author_flair" : "author_flair_text",
+                     "edited" : "edited"}
     
     # parse the posts and put in dictionary
     for post in posts:

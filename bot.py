@@ -18,16 +18,20 @@ def read_from_config(filename="config.ini"):
     try:
         with open(filepath) as config_file:
             config.read_file(config_file)
-    except OSError:
+    except FileNotFoundError:
         # if config doesn't exist, ask to copy SAMPLE_CONFIG.ini
-        usrinput = input(f"{path} does not exist. "
+        usrinput = input(f"{filepath} does not exist. "
                          f"Copy config from SAMPLE_CONFIG? (y/n): ")
         if usrinput.lower() == 'y':
-            shutil.copy(currentdir + "SAMPLE_CONFIG.ini", currentdir + "config.ini")
-            read_from_config()
+            dest_file = currentdir + "config.ini"
+            shutil.copy(currentdir + "SAMPLE_CONFIG.ini", dest_file)
+            with open(dest_file) as config_file:
+                config.read_file(config_file)
+                return config
+
         logging.error("Config file not found. EXITING")
-        raise
-        
+        return None
+
     return config
 
 def check_config(config, filename="config.ini"):
@@ -37,10 +41,11 @@ def check_config(config, filename="config.ini"):
         for key in config[section]:
             if config[section][key] == "NULL":
                 config[section][key] = set_config(section, key)
-                with open(dirname(realpath(__file__)) + '/' + filename, 'w') as configfile:
+                filepath = dirname(realpath(__file__)) + '/' + filename
+                with open(filepath, 'w') as configfile:
                     config.write(configfile)
-                logging.info("Wrote {dirname(realpath(__file__)) + '/' + filename}")
-                
+    logging.info(f"Wrote {filepath}")
+
 def set_config(section, key):
     """Asks the user to input a value."""
     print(f"No value found for '{key}' in '{section}'. "
@@ -60,8 +65,7 @@ def format_post(post):
     title = post["title"]
     author = post["author"]
     url = f"https://redd.it/{post['post_id']}"
-    content = post["content"]
-    
+
     # prepend the post flair if it exists
     if post["flair"]:
         title = f"({post['flair']}){title}"
@@ -69,13 +73,10 @@ def format_post(post):
     if post["author_flair"]:
         author = f"{author}({post['author_flair']})"
 
-    # truncate the post content to 2000 characters
-    if len(post["content"]) > 2000:
-        content = post["content"][:1997] + "..."
-
-    return title, url, author, content
+    return title, url, author
 
 def compare_lists(old_list, new_list):
+    """Returns items in new_list that are not in old_list."""
     output_list = []
     for item in new_list:
         if item not in old_list:
@@ -84,22 +85,23 @@ def compare_lists(old_list, new_list):
 
 
 class DiscordClient(discord.Client):
+    """A class to modify discord.Client behavior."""
     def __init__(self, reddit_session, subreddit, channel_id, *args, **kwargs):
         """The Discord client class inherits from discord.Client to 
         interact with the Discord API. It takes a RedditSession object
         and the name of the subreddit to check posts from, the channel ID
         in Discord to send messages to, as well as other arguments
         as required by discord.py"""
-        
+
         super().__init__(*args, **kwargs)
 
         self.reddit_session = reddit_session
         self.subreddit = subreddit
         self.channel_id = int(channel_id)
-        
+
         # flag for Reddit authentication
         self.reddit_authenticated = asyncio.Event()
-        
+
         # create background tasks
         self.auth_loop = self.loop.create_task(self.reddit_auth_loop())
         self.check_loop = self.loop.create_task(self.reddit_check_loop())
@@ -109,28 +111,28 @@ class DiscordClient(discord.Client):
         await self.reddit_session.revoke_token()
         await self.reddit_session.client_session.close()
         await super().close(*args, **kwargs)
-    
+
     async def on_ready(self):
         """Status message when bot is ready."""
         logging.info(f"Logged in as {self.user} (ID: {self.user.id})")
 
     async def reddit_auth_loop(self):
         """Authenticate every hour."""
-        
+
         await self.wait_until_ready()
         buffer_time = 100 # seconds
-        
+
         while not self.is_closed():
             if await self.reddit_session.client_cred_grant():
                 self.reddit_authenticated.set()
                 await asyncio.sleep(self.reddit_session.expires_in - buffer_time)
                 # unsets when time is up so it can re-authenticate
             self.reddit_authenticated.clear()
-        
+
     async def reddit_check_loop(self):
         """Check for posts every 5 seconds and sends a message if a post from
         r/subreddit/new has been posted within the last check interval."""
-        
+
         while not self.is_closed():
             await self.reddit_authenticated.wait()
             logging.debug(f"Checking for new posts in r/{self.subreddit}")
@@ -141,19 +143,20 @@ class DiscordClient(discord.Client):
             new_posts = compare_lists(posts, updated_posts)
             if new_posts:
                 for post in new_posts:
-                    logging.info(f"New post found: {post['title']}")
-                    await self.discord_notify(post)
+                    if not post["edited"]:
+                        logging.info(f"New post found: {post['title']}")
+                        await self.discord_notify(post)
 
     async def discord_notify(self, post):
         """Takes a post containing data in dictionary form, formats it, and
         sends notifications in Discord."""
-        title, url, author, content = format_post(post)
-        
+        title, url, author = format_post(post)
+
         channel = self.get_channel(self.channel_id)
         await channel.send(f"{title}\n{url} by {author}")
         logging.debug(f"Notification for '{title}' sent")
         await asyncio.sleep(0.5) # ensure the bot does not spam
-                
+
 def main():
     """Reads config and starts the bot."""
     logging.basicConfig(
@@ -163,8 +166,10 @@ def main():
         handlers=[logging.FileHandler("debug.log", 'w'),
                   logging.StreamHandler()]
     )
-    
+
     config = read_from_config()
+    if not config:
+        return
     check_config(config)
 
     reddit_session = start_reddit_session_from_config(config)
