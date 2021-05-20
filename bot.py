@@ -37,14 +37,17 @@ def read_from_config(filename="config.ini"):
 def check_config(config, filename="config.ini"):
     """Parses through the config file for any NULL values and asks for user
     input to set the value."""
+    filepath = dirname(realpath(__file__)) + '/' + filename
+    edited = False
     for section in config.sections():
         for key in config[section]:
             if config[section][key] == "NULL":
                 config[section][key] = set_config(section, key)
-                filepath = dirname(realpath(__file__)) + '/' + filename
                 with open(filepath, 'w') as configfile:
                     config.write(configfile)
-    logging.info(f"Wrote {filepath}")
+                    edited = True
+    if edited:
+        logging.info(f"Wrote {filepath}")
 
 def set_config(section, key):
     """Asks the user to input a value."""
