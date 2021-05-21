@@ -16,30 +16,38 @@ def random_string(length=20):
     return "".join(random.choice(charset) for _ in range(length))
 
 def sub_parse_to_list(data):
-    """Parses relevant JSON data and returns a list of 
-    posts which are represented by dictionaries.
+    """Parses relevant JSON data and returns a dictionary 
+    with post id as the keys and post information as the values:
+      
+      { post_id : {
+            "title" : title,
+            "author" : author,
+            "flair" : flair_text,
+            "author_flair" : author_flair_text,
+        },
+        post_id_2 ...,
+        post_id_3 ...,
+      }
+        
     """
     # follows the JSON format returned by reddit
     # list of posts containing info
     posts = data["data"]["children"]
-    posts_list = []
+    posts_dict = {}
     # the locations of post data values within the JSON
-    post_template = {"title" : "title",
-                     "post_id" : "id",
-                     "create_time" : "created_utc",
+    post_template = {"post_id" : "id",
+                     "title" : "title",
                      "author" : "author",
-                     "content" : "selftext",
                      "flair" : "link_flair_text",
-                     "author_flair" : "author_flair_text",
-                     "edited" : "edited"}
+                     "author_flair" : "author_flair_text"}
     
     # parse the posts and put in dictionary
     for post in posts:
         temp_dict = {}
         for var_name, json_loc in post_template.items():
-            temp_dict[var_name] = post['data'][json_loc]
-        posts_list.append(temp_dict)
-    return posts_list
+            temp_dict[var_name] = post["data"][json_loc]
+        posts_dict.update({post["data"]["id"] : temp_dict})
+    return posts_dict
 
 class RedditSession:
     """A class to keep track of shared instance variables required for
@@ -111,7 +119,7 @@ class RedditSession:
         payload = {"limit" : num_posts, "sort" : "new"}
         headers = {"Authorization" : token, "User-Agent" : self.user_agent}
         try:
-            async with self.client_session.get(url, data=payload,
+            async with self.client_session.get(url, params=payload,
                     headers=headers) as response:
                 check_response(response)
                 sub_data = await response.json()
@@ -119,3 +127,4 @@ class RedditSession:
                 return sub_parse_to_list(sub_data)
         except aiohttp.ClientResponseError as err:
             logging.error(f"Request failed with error code {err.status}")
+        return

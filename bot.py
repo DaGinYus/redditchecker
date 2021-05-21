@@ -3,6 +3,7 @@ import asyncio
 import configparser
 import logging
 import shutil
+import sys
 import time
 from os.path import dirname, realpath
 
@@ -78,12 +79,14 @@ def format_post(post):
 
     return title, url, author
 
-def compare_lists(old_list, new_list):
-    """Returns items in new_list that are not in old_list."""
+def compare(temp_dict, new_dict):
+    """Checks for keys in new_dict that are not in temp_dict
+    and returns the values associated with those keys."""
     output_list = []
-    for item in new_list:
-        if item not in old_list:
-            output_list.append(item)
+    if new_dict and temp_dict:
+        for key in new_dict:
+            if key not in temp_dict:
+                output_list.append(new_dict[key])
     return output_list
 
 
@@ -136,19 +139,23 @@ class DiscordClient(discord.Client):
         """Check for posts every 5 seconds and sends a message if a post from
         r/subreddit/new has been posted within the last check interval."""
 
+        check_interval = 5 # seconds
+        
+        # populate a cache that is checked against new posts
+        await self.reddit_authenticated.wait()
+        temp_posts = await self.reddit_session.sub_get_new(self.subreddit)
+        
         while not self.is_closed():
             await self.reddit_authenticated.wait()
             logging.debug(f"Checking for new posts in r/{self.subreddit}")
-            check_interval = 5 # seconds
-            posts = await self.reddit_session.sub_get_new(self.subreddit)
-            await asyncio.sleep(check_interval)
             updated_posts = await self.reddit_session.sub_get_new(self.subreddit)
-            new_posts = compare_lists(posts, updated_posts)
+            new_posts = compare(temp_posts, updated_posts)
             if new_posts:
+                temp_posts = updated_posts
                 for post in new_posts:
-                    if not post["edited"]:
-                        logging.info(f"New post found: {post['title']}")
-                        await self.discord_notify(post)
+                    logging.info(f"New post found: {post['title']}")
+                    await self.discord_notify(post)
+            await asyncio.sleep(check_interval)
 
     async def discord_notify(self, post):
         """Takes a post containing data in dictionary form, formats it, and
@@ -160,10 +167,17 @@ class DiscordClient(discord.Client):
         logging.debug(f"Notification for '{title}' sent")
         await asyncio.sleep(0.5) # ensure the bot does not spam
 
+
 def main():
     """Reads config and starts the bot."""
+    debug_level = logging.INFO
+    # command line argument to set verbosity
+    if len(sys.argv) == 2:
+        if sys.argv[1] == "-v":
+            debug_level = logging.DEBUG
+    
     logging.basicConfig(
-        level=logging.INFO,
+        level=debug_level,
         format="%(asctime)s %(levelname)-8s %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S",
         handlers=[logging.FileHandler("debug.log", 'w'),
