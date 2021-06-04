@@ -5,6 +5,7 @@ import logging
 import shutil
 import sys
 import time
+import traceback
 from os.path import dirname, realpath
 
 import discord
@@ -199,4 +200,8 @@ def main():
     client.run(discord_token)
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception as e:
+        # log silent errors
+        logging.error(traceback.format_exc())
